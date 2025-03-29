@@ -1,280 +1,56 @@
-// index.html
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Location Tracker</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 500px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        #map {
-            height: 300px;
-            margin-top: 20px;
-            border: 1px solid #ccc;
-            display: none;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        button {
-            padding: 10px 15px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        #status {
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-    </style>
+    <title>Live Location Tracker</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
 </head>
 <body>
-    <h1>Location Tracker</h1>
-    
-    <div class="form-group">
-        <label for="phone">Your Phone Number:</label>
-        <input type="tel" id="phone" placeholder="+1234567890" required>
-    </div>
-    
-    <button id="startTracking">Start Tracking</button>
-    <button id="stopTracking" style="display:none; background-color: #dc3545;">Stop Tracking</button>
-    
-    <div id="status"></div>
-    <div id="map"></div>
+    <h2>Live Location Tracker</h2>
+    <p id="status">Waiting for location...</p>
 
-    <script src="app.js"></script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap"></script>
+    <script>
+        // 🔥 Firebase Configuration (Replace with your Firebase details)
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        function updateLocation(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const timestamp = new Date().toISOString();
+
+            document.getElementById("status").innerText = `Location: ${lat}, ${lng}`;
+
+            // Send to Firebase
+            database.ref("users/user1").set({
+                latitude: lat,
+                longitude: lng,
+                timestamp: timestamp
+            });
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(updateLocation, error => {
+                    document.getElementById("status").innerText = "Location access denied.";
+                }, { enableHighAccuracy: true });
+            } else {
+                document.getElementById("status").innerText = "Geolocation is not supported.";
+            }
+        }
+
+        getLocation(); // Start tracking
+    </script>
 </body>
 </html>
-
-// app.js
-let watchId = null;
-let map = null;
-let marker = null;
-const SERVER_URL = 'https://your-server-url.com/api/location';
-let phoneNumber = '';
-
-// Initialize Google Map
-function initMap() {
-    map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: -34.397, lng: 150.644 },
-        zoom: 15
-    });
-}
-
-document.getElementById('startTracking').addEventListener('click', function() {
-    phoneNumber = document.getElementById('phone').value.trim();
-    
-    if (!phoneNumber) {
-        updateStatus('Please enter your phone number', 'error');
-        return;
-    }
-    
-    // Save phone number
-    localStorage.setItem('trackingPhoneNumber', phoneNumber);
-    
-    // Start tracking
-    startTracking();
-});
-
-document.getElementById('stopTracking').addEventListener('click', function() {
-    stopTracking();
-});
-
-function startTracking() {
-    if (navigator.geolocation) {
-        updateStatus('Requesting location permission...', 'info');
-        
-        // Options for geolocation
-        const options = {
-            enableHighAccuracy: true,  // Get best possible location
-            maximumAge: 30000,         // Accept locations up to 30 seconds old
-            timeout: 27000             // Wait up to 27 seconds for a location
-        };
-        
-        // Start continuous tracking
-        watchId = navigator.geolocation.watchPosition(
-            handleLocationSuccess,
-            handleLocationError,
-            options
-        );
-        
-        // Update UI
-        document.getElementById('startTracking').style.display = 'none';
-        document.getElementById('stopTracking').style.display = 'inline-block';
-        document.getElementById('map').style.display = 'block';
-        
-        // Register this page for periodic background sync if supported
-        registerBackgroundSync();
-        
-    } else {
-        updateStatus('Geolocation is not supported by your browser', 'error');
-    }
-}
-
-function stopTracking() {
-    if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-        
-        // Update UI
-        document.getElementById('startTracking').style.display = 'inline-block';
-        document.getElementById('stopTracking').style.display = 'none';
-        updateStatus('Location tracking stopped', 'info');
-    }
-}
-
-function handleLocationSuccess(position) {
-    const { latitude, longitude, accuracy } = position.coords;
-    
-    updateStatus(`Location updated (accuracy: ${accuracy.toFixed(1)}m)`, 'success');
-    
-    // Update map if available
-    if (map) {
-        const currentLocation = { lat: latitude, lng: longitude };
-        map.setCenter(currentLocation);
-        
-        if (marker) {
-            marker.setPosition(currentLocation);
-        } else {
-            marker = new google.maps.Marker({
-                position: currentLocation,
-                map: map,
-                title: 'Your Location'
-            });
-        }
-    }
-    
-    // Send to server
-    sendLocationToServer(position);
-}
-
-function handleLocationError(error) {
-    let message;
-    
-    switch(error.code) {
-        case error.PERMISSION_DENIED:
-            message = "Location permission denied";
-            break;
-        case error.POSITION_UNAVAILABLE:
-            message = "Location information unavailable";
-            break;
-        case error.TIMEOUT:
-            message = "Location request timed out";
-            break;
-        default:
-            message = "Unknown error occurred";
-            break;
-    }
-    
-    updateStatus(message, 'error');
-}
-
-function sendLocationToServer(position) {
-    // Get the stored phone number
-    const phone = localStorage.getItem('trackingPhoneNumber') || phoneNumber;
-    
-    if (!phone) {
-        updateStatus('Phone number not found', 'error');
-        return;
-    }
-    
-    const locationData = {
-        phoneNumber: phone,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        timestamp: new Date().toISOString()
-    };
-    
-    // Send to server using the Fetch API
-    fetch(SERVER_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(locationData)
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Server response:', data);
-    })
-    .catch(error => {
-        console.error('Error sending location:', error);
-        // Store failed updates locally for retry
-        storeLocationForRetry(locationData);
-    });
-}
-
-function storeLocationForRetry(locationData) {
-    // Get stored locations or initialize empty array
-    const storedLocations = JSON.parse(localStorage.getItem('pendingLocations') || '[]');
-    
-    // Add new location data
-    storedLocations.push(locationData);
-    
-    // Only keep the last 50 locations to prevent using too much storage
-    const trimmedLocations = storedLocations.slice(-50);
-    
-    // Save back to localStorage
-    localStorage.setItem('pendingLocations', JSON.stringify(trimmedLocations));
-}
-
-function registerBackgroundSync() {
-    // This requires HTTPS and service worker support
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-        navigator.serviceWorker.ready
-            .then(registration => {
-                // Register for background sync
-                return registration.sync.register('sendLocations');
-            })
-            .catch(err => {
-                console.error('Background sync registration failed:', err);
-            });
-    }
-}
-
-function updateStatus(message, type) {
-    const statusElement = document.getElementById('status');
-    statusElement.textContent = message;
-    statusElement.className = type;
-}
-
-// Check if we need to restart tracking on page load
-window.addEventListener('load', function() {
-    const storedPhone = localStorage.getItem('trackingPhoneNumber');
-    if (storedPhone) {
-        document.getElementById('phone').value = storedPhone;
-        phoneNumber = storedPhone;
-        
-        // Auto-restart if we were tracking before
-        if (localStorage.getItem('isTracking') === 'true') {
-            startTracking();
-        }
-    }
-});
-
-// Remember tracking state when page is unloaded
-window.addEventListener('beforeunload', function() {
-    localStorage.setItem('isTracking', watchId !== null ? 'true' : 'false');
-});
